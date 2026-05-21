@@ -1,5 +1,5 @@
 import Patient from '../models/PatientModel.js';
-import { syncPatientIntakeToDrive } from '../services/googleDriveService.js';
+import { syncPatientIntakeToDrive, syncPatientRegistryToDrive } from '../services/googleDriveService.js';
 
 // 1. Create a new patient record and sync to Google Drive
 export const createPatient = async (req, res) => {
@@ -44,6 +44,16 @@ export const createPatient = async (req, res) => {
     const savedRecord = await newPatient.save();
     console.log(`[PATIENT CONTROLLER] Patient logged: ${name} [${savedRecord.id}]`);
     res.status(201).json(savedRecord);
+
+    // Update HTML Master Registry in Google Drive in background
+    setImmediate(async () => {
+      try {
+        const allPatients = await Patient.find().sort({ createdAt: -1 });
+        await syncPatientRegistryToDrive(allPatients);
+      } catch (err) {
+        console.error('[PATIENT CONTROLLER] Failed to sync registry:', err.message);
+      }
+    });
   } catch (error) {
     console.error('[PATIENT CONTROLLER] Error creating patient:', error);
     res.status(500).json({ error: error.message || 'Failed to create patient record.' });
