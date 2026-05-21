@@ -2,48 +2,36 @@ import { google } from 'googleapis';
 import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
- * Searches multiple directories and names to locate the Google credentials file.
- * 
- * @returns {{clientEmail: string|undefined, privateKey: string|undefined}} Loaded credentials
+ * Initializes and returns the Google Drive API client using OAuth 2.0
  */
-const getGoogleCredentials = () => {
-  let clientEmail = process.env.GOOGLE_CLIENT_EMAIL;
-  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
+const getOAuthClient = () => {
+  try {
+    const credPath = path.join(__dirname, 'oauth_credentials.json');
+    const tokenPath = path.join(__dirname, 'token.json');
 
-  // Broad search path array covering root, services subfolder, and double-extension files (.json.json)
-  const potentialPaths = [
-    path.join(process.cwd(), 'credentials.json'),
-    path.join(process.cwd(), 'credentials.json.json'),
-    path.join(process.cwd(), 'services', 'credentials.json'),
-    path.join(process.cwd(), 'services', 'credentials.json.json'),
-    path.join(process.cwd(), '..', 'credentials.json'),
-    path.join(process.cwd(), '..', 'credentials.json.json'),
-  ];
-
-  for (const filePath of potentialPaths) {
-    try {
-      if (fs.existsSync(filePath)) {
-        const fileContent = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        if (fileContent.client_email && fileContent.private_key) {
-          clientEmail = fileContent.client_email;
-          privateKey = fileContent.private_key;
-          console.log(`[GOOGLE DRIVE SERVICE] Successfully auto-detected and loaded credentials from: ${filePath}`);
-          return { clientEmail, privateKey };
-        }
-      }
-    } catch (err) {
-      // Continue search on exception
+    if (!fs.existsSync(credPath) || !fs.existsSync(tokenPath)) {
+      console.warn('[GOOGLE DRIVE SERVICE] Missing oauth_credentials.json or token.json in services folder. Skipping Google Drive backup.');
+      return null;
     }
-  }
 
-  // Fallback to environment variables if no file found
-  if (clientEmail && privateKey) {
-    console.log('[GOOGLE DRIVE SERVICE] Using credentials configured in .env variables.');
-  }
+    const credentials = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+    const token = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
 
-  return { clientEmail, privateKey };
+    const { client_secret, client_id, redirect_uris } = credentials.installed || credentials.web;
+    const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0] || 'urn:ietf:wg:oauth:2.0:oob');
+    oAuth2Client.setCredentials(token);
+
+    return google.drive({ version: 'v3', auth: oAuth2Client });
+  } catch (err) {
+    console.error('[GOOGLE DRIVE SERVICE] OAuth Initialization failed:', err.message);
+    return null;
+  }
 };
 
 /**
@@ -142,27 +130,14 @@ export const syncPatientIntakeToDrive = async (patientData) => {
   const { ipNo, name, age, date, gender, recordType, fileName, fileSize, fileData } = patientData;
   const parentFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
-  // Retrieve credentials securely
-  const { clientEmail, privateKey } = getGoogleCredentials();
+  // Initialize Drive API with OAuth2
+  const drive = getOAuthClient();
 
-  if (!clientEmail || !privateKey) {
-    console.warn('[GOOGLE DRIVE SERVICE] Credentials missing. Skipping Google Drive backup.');
+  if (!drive) {
     return null;
   }
 
   try {
-    const formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
-
-    // Authenticate Google JWT
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: clientEmail,
-        private_key: formattedPrivateKey,
-      },
-      scopes: ['https://www.googleapis.com/auth/drive.file'],
-    });
-
-    const drive = google.drive({ version: 'v3', auth });
 
     // 1. Get or create Year and Month folders based on intake date
     const { year, month, monthFolderId } = await getOrCreateTimeFolders(drive, parentFolderId, date);
@@ -179,6 +154,10 @@ export const syncPatientIntakeToDrive = async (patientData) => {
     
     try {
       console.log(`[GOOGLE DRIVE SERVICE] Uploading diagnostic report: ${fileName}...`);
+      
+      const mimeTypeMatch = fileData.match(/^data:(.+?);base64,/);
+      const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'application/octet-stream';
+      
       const base64Content = fileData.split(';base64,').pop();
       const fileBuffer = Buffer.from(base64Content, 'base64');
 
@@ -193,6 +172,7 @@ export const syncPatientIntakeToDrive = async (patientData) => {
           parents: targetFolderId ? [targetFolderId] : undefined
         },
         media: {
+          mimeType: mimeType,
           body: bufferStream
         },
         fields: 'id, webViewLink',
