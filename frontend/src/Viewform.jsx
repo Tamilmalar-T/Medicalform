@@ -30,7 +30,6 @@ function Viewform({ records, onDeleteRecord }) {
     link.click();
     document.body.removeChild(link);
   };
-
   return (
     <div className="view-card animate-fade-in">
       <div className="view-card-header">
@@ -98,6 +97,7 @@ function Viewform({ records, onDeleteRecord }) {
                 <th>IP Address</th>
                 <th>Age</th>
                 <th>Intake Date</th>
+                <th>Category</th>
                 <th>Gender</th>
                 <th>Diagnostic File</th>
                 <th className="text-right">Actions</th>
@@ -105,7 +105,7 @@ function Viewform({ records, onDeleteRecord }) {
             </thead>
             <tbody>
               {filteredRecords.map((record) => (
-                <tr key={record.id} className="record-row" onClick={() => setSelectedRecord(record)}>
+                <tr key={record.id || record._id} className="record-row" onClick={() => setSelectedRecord(record)}>
                   {/* Name column */}
                   <td className="font-semibold text-primary-cell">
                     <div className="avatar-placeholder">
@@ -124,6 +124,11 @@ function Viewform({ records, onDeleteRecord }) {
 
                   {/* Date column */}
                   <td>{record.date}</td>
+
+                  {/* Category column */}
+                  <td>
+                    <span className="ip-badge">{record.recordType || 'N/A'}</span>
+                  </td>
 
                   {/* Gender column */}
                   <td>
@@ -158,10 +163,11 @@ function Viewform({ records, onDeleteRecord }) {
                       </button>
                       <button 
                         className="action-icon-btn delete-btn"
-                        onClick={() => {
-                          if (confirm(`Are you sure you want to delete patient record for ${record.name}?`)) {
-                            onDeleteRecord(record.id);
-                          }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const recordId = record.id || record._id;
+                          console.log('Delete button clicked for:', record.name, 'ID:', recordId);
+                          onDeleteRecord(recordId);
                         }}
                         title="Delete Record"
                       >
@@ -188,7 +194,7 @@ function Viewform({ records, onDeleteRecord }) {
               </div>
               <div className="patient-header-details">
                 <h3>{selectedRecord.name}</h3>
-                <span className="patient-id">Record ID: {selectedRecord.id}</span>
+                <span className="patient-id">Record ID: {selectedRecord.id || selectedRecord._id}</span>
               </div>
             </div>
 
@@ -209,6 +215,12 @@ function Viewform({ records, onDeleteRecord }) {
                 <span className="grid-label">Gender</span>
                 <span className={`gender-tag ${selectedRecord.gender.toLowerCase()} large`}>
                   {selectedRecord.gender}
+                </span>
+              </div>
+              <div className="grid-item">
+                <span className="grid-label">Category</span>
+                <span className="grid-value" style={{ textTransform: 'capitalize' }}>
+                  {selectedRecord.recordType || 'Uncategorized'}
                 </span>
               </div>
             </div>

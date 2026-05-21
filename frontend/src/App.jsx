@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Form from './Form';
 import Viewform from './Viewform';
+import Login from './Login';
 import './App.css';
 
 const API_BASE_URL = 'http://localhost:5000/api';
@@ -10,6 +11,9 @@ function App() {
   const [records, setRecords] = useState([]);
   const [isOffline, setIsOffline] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('medflow_auth') === 'true';
+  });
 
   // Sync records from MongoDB backend on render (falls back to localStorage on failure)
   const syncWithDatabase = async () => {
@@ -38,9 +42,10 @@ function App() {
             ipNo: '192.168.1.45',
             name: 'Elizabeth Vance',
             age: 28,
-            date: '2026-05-18',
+            date: '2026-05-20',
             gender: 'Female',
-            fileName: 'blood_panel_report.pdf',
+            recordType: 'MSC Patient',
+            fileName: 'blood_test_results.pdf',
             fileSize: '1.2 MB',
             fileData: 'data:application/pdf;base64,...',
             createdAt: new Date('2026-05-18T10:30:00Z').toISOString()
@@ -52,6 +57,7 @@ function App() {
             age: 42,
             date: '2026-05-19',
             gender: 'Male',
+            recordType: 'Medical Advice',
             fileName: 'brain_mri_scan.jpg',
             fileSize: '4.8 MB',
             fileData: 'data:image/jpeg;base64,...',
@@ -107,7 +113,7 @@ function App() {
   // Delete records handler (removes from MongoDB, falls back to local storage)
   const deleteRecord = async (id) => {
     // Optimistic UI update
-    const updated = records.filter(r => r.id !== id);
+    const updated = records.filter(r => (r.id || r._id) !== id);
     setRecords(updated);
     localStorage.setItem('medflow_submissions', JSON.stringify(updated));
 
@@ -133,7 +139,7 @@ function App() {
 
   return (
     <div className="app-container">
-      {/* Premium Header */}
+      {/* Premium Header - Always Visible */}
       <header className="main-header">
         <div className="header-brand">
           <div className="brand-logo">
@@ -156,31 +162,75 @@ function App() {
           </div>
         </div>
 
-        <nav className="header-nav">
-          <button 
-            className={`nav-btn ${activeTab === 'form' ? 'active' : ''}`}
-            onClick={() => setActiveTab('form')}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Record Entry
-          </button>
-          
-          <button 
-            className={`nav-btn ${activeTab === 'view' ? 'active' : ''}`}
-            onClick={() => setActiveTab('view')}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M4 6h16M4 10h16M4 14h16M4 18h16" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            Submissions Log
-            {records.length > 0 && <span className="badge">{records.length}</span>}
-          </button>
-        </nav>
+        {isAuthenticated && (
+          <nav className="header-nav">
+            <button 
+              className={`nav-btn ${activeTab === 'form' ? 'active' : ''}`}
+              onClick={() => setActiveTab('form')}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              New Entry
+            </button>
+            
+            <button 
+              className={`nav-btn ${activeTab === 'view' ? 'active' : ''}`}
+              onClick={() => setActiveTab('view')}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 6h16M4 10h16M4 14h16M4 18h16" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Submissions Log
+              {records.length > 0 && <span className="badge">{records.length}</span>}
+            </button>
+          </nav>
+        )}
+
+        {/* User Auth Controls */}
+        <div className="header-auth">
+          {!isAuthenticated ? (
+            <div className="user-avatar-btn disabled" title="Please log in">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+            </div>
+          ) : (
+            <div 
+              className="user-avatar-btn logout-hover" 
+              title="Click to Logout"
+              onClick={() => {
+                setIsAuthenticated(false);
+                localStorage.removeItem('medflow_auth');
+              }}
+            >
+              <svg className="avatar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+              </svg>
+              <svg className="logout-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                <polyline points="16 17 21 12 16 7"></polyline>
+                <line x1="21" y1="12" x2="9" y2="12"></line>
+              </svg>
+              <span className="logout-text">Logout</span>
+            </div>
+          )}
+        </div>
       </header>
 
-      {/* Stats Summary Bar */}
+      {/* Main App Content - Only visible when logged in */}
+      {!isAuthenticated ? (
+        <main className="main-content login-wrapper">
+          <Login onLoginSuccess={() => {
+            setIsAuthenticated(true);
+            localStorage.setItem('medflow_auth', 'true');
+          }} />
+        </main>
+      ) : (
+        <>
+          {/* Stats Summary Bar */}
       <section className="stats-bar">
         <div className="stat-card">
           <div className="stat-icon">
@@ -232,8 +282,8 @@ function App() {
           <Viewform records={records} onDeleteRecord={deleteRecord} />
         )}
       </main>
-
-
+        </>
+      )}
     </div>
   );
 }

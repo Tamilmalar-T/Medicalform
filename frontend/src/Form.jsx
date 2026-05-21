@@ -8,6 +8,7 @@ function Form({ onRecordSubmit, onViewSubmissions }) {
     age: '',
     date: new Date().toISOString().split('T')[0], // prefill with current date
     gender: '',
+    recordType: '',
   });
 
   const [file, setFile] = useState(null);
@@ -25,8 +26,9 @@ function Form({ onRecordSubmit, onViewSubmissions }) {
     if (formData.age) score += 1;
     if (formData.date) score += 1;
     if (formData.gender) score += 1;
+    if (formData.recordType) score += 1;
     if (file) score += 1;
-    return Math.round((score / 6) * 100);
+    return Math.round((score / 7) * 100);
   };
 
   const completeness = calculateCompleteness();
@@ -68,6 +70,11 @@ function Form({ onRecordSubmit, onViewSubmissions }) {
     // Gender Validation
     if (!formData.gender) {
       newErrors.gender = 'Please select patient gender';
+    }
+
+    // Category Validation
+    if (!formData.recordType) {
+      newErrors.recordType = 'Please select a record category';
     }
 
     // File Validation
@@ -170,6 +177,7 @@ function Form({ onRecordSubmit, onViewSubmissions }) {
         fileName: file.name,
         fileSize: file.size,
         fileData: file.data, // Base64 url
+        recordType: formData.recordType,
         createdAt: new Date().toISOString()
       };
 
@@ -186,6 +194,7 @@ function Form({ onRecordSubmit, onViewSubmissions }) {
       age: '',
       date: new Date().toISOString().split('T')[0],
       gender: '',
+      recordType: '',
     });
     setFile(null);
     setFileError('');
@@ -338,6 +347,24 @@ function Form({ onRecordSubmit, onViewSubmissions }) {
               </label>
             </div>
             {errors.gender && <span className="error-message">{errors.gender}</span>}
+          </div>
+          {/* New Category Dropdown */}
+          <div className={`form-group ${errors.recordType ? 'has-error' : ''}`}>
+            <label htmlFor="recordType">Record Category</label>
+            <select
+              id="recordType"
+              name="recordType"
+              value={formData.recordType}
+              onChange={handleInputChange}
+              className="custom-input"
+            >
+              <option value="" disabled>Select a category...</option>
+              <option value="MSC Patient">MSC Patient</option>
+              <option value="Medical Advice">Medical Advice</option>
+              <option value="Birth">Birth</option>
+              <option value="Death">Death</option>
+            </select>
+            {errors.recordType && <span className="error-message">{errors.recordType}</span>}
           </div>
         </div>
 

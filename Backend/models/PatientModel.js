@@ -26,6 +26,11 @@ const PatientSchema = new mongoose.Schema({
     required: [true, 'Gender is required'],
     enum: ['Male', 'Female', 'Other']
   },
+  recordType: {
+    type: String,
+    required: [true, 'Record type is required'],
+    enum: ['MSC Patient', 'Medical Advice', 'Birth', 'Death']
+  },
   fileName: {
     type: String,
     required: [true, 'Diagnostic file name is required']

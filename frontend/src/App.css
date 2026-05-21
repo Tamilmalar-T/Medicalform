@@ -199,6 +199,94 @@
   box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
 }
 
+/* Header Auth Dropdown */
+.header-auth {
+  position: relative;
+}
+
+.user-avatar-btn {
+  width: 40px;
+  height: 40px;
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.user-avatar-btn:hover {
+  background: rgba(79, 70, 229, 0.15);
+  transform: scale(1.05);
+}
+
+.user-avatar-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.user-avatar-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.user-avatar-btn.logout-hover {
+  position: relative;
+  overflow: hidden;
+}
+
+.user-avatar-btn.logout-hover .avatar-icon {
+  position: absolute;
+  transition: all 0.3s ease;
+}
+
+.user-avatar-btn.logout-hover .logout-icon {
+  position: absolute;
+  opacity: 0;
+  transform: scale(0.5);
+  transition: all 0.3s ease;
+}
+
+.user-avatar-btn.logout-hover .logout-text {
+  position: absolute;
+  right: 120%;
+  background: #ef4444;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateX(10px);
+  transition: all 0.3s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.user-avatar-btn.logout-hover:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.user-avatar-btn.logout-hover:hover .avatar-icon {
+  opacity: 0;
+  transform: scale(1.5);
+}
+
+.user-avatar-btn.logout-hover:hover .logout-icon {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.user-avatar-btn.logout-hover:hover .logout-text {
+  opacity: 1;
+  transform: translateX(0);
+}
+
 /* Stats Summary Bar */
 .stats-bar {
   display: grid;

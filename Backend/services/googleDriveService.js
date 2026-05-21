@@ -47,6 +47,60 @@ const getGoogleCredentials = () => {
 };
 
 /**
+ * Helper to get or create a folder by name inside a parent folder.
+ */
+const getOrCreateFolder = async (drive, folderName, parentFolderId) => {
+  try {
+    const searchRes = await drive.files.list({
+      q: `name='${folderName}' and '${parentFolderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      fields: 'files(id)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
+    });
+
+    if (searchRes.data.files && searchRes.data.files.length > 0) {
+      return searchRes.data.files[0].id;
+    }
+
+    console.log(`[GOOGLE DRIVE SERVICE] Creating folder: "${folderName}"...`);
+    const response = await drive.files.create({
+      requestBody: {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: parentFolderId ? [parentFolderId] : undefined
+      },
+      fields: 'id',
+      supportsAllDrives: true
+    });
+    return response.data.id;
+  } catch (error) {
+    console.error(`[GOOGLE DRIVE SERVICE] Error getting/creating folder ${folderName}:`, error.message);
+    return parentFolderId; // fallback to parent
+  }
+};
+
+/**
+ * Gets or creates the Year and Month folders for a given date.
+ */
+const getOrCreateTimeFolders = async (drive, parentFolderId, dateString) => {
+  const dateObj = new Date(dateString);
+  let year = dateObj.getFullYear().toString();
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  let month = monthNames[dateObj.getMonth()];
+
+  // Fallback if date is invalid
+  if (isNaN(dateObj.getTime())) {
+    year = new Date().getFullYear().toString();
+    month = monthNames[new Date().getMonth()];
+  }
+
+  const yearFolderId = await getOrCreateFolder(drive, year, parentFolderId);
+  const monthFolderId = await getOrCreateFolder(drive, month, yearFolderId);
+  
+  return { year, month, monthFolderId };
+};
+
+/**
  * Creates a dedicated patient folder on Google Drive under the parent folder ID.
  * 
  * @param {object} drive Google Drive API Client instance
@@ -85,7 +139,7 @@ const createPatientFolder = async (drive, patientName, parentFolderId) => {
  * @returns {Promise<{driveFileId: string, driveFileUrl: string, driveReportFileId: string, driveReportFileUrl: string}|null>} File metadata map
  */
 export const syncPatientIntakeToDrive = async (patientData) => {
-  const { ipNo, name, age, date, gender, fileName, fileSize, fileData } = patientData;
+  const { ipNo, name, age, date, gender, recordType, fileName, fileSize, fileData } = patientData;
   const parentFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
   // Retrieve credentials securely
@@ -110,11 +164,14 @@ export const syncPatientIntakeToDrive = async (patientData) => {
 
     const drive = google.drive({ version: 'v3', auth });
 
-    // 1. Create a dedicated folder for this patient inside the main Dataform folder
-    const patientFolderId = await createPatientFolder(drive, name, parentFolderId);
+    // 1. Get or create Year and Month folders based on intake date
+    const { year, month, monthFolderId } = await getOrCreateTimeFolders(drive, parentFolderId, date);
+
+    // 2. Create a dedicated folder for this patient inside the Month folder
+    const patientFolderId = await createPatientFolder(drive, name, monthFolderId);
     
-    // Fall back to main parent folder if creation fails
-    const targetFolderId = patientFolderId || parentFolderId;
+    // Fall back to month folder if creation fails
+    const targetFolderId = patientFolderId || monthFolderId;
 
     // 2. Upload Original Diagnostic Attachment File
     let driveFileId = '';
@@ -138,7 +195,8 @@ export const syncPatientIntakeToDrive = async (patientData) => {
         media: {
           body: bufferStream
         },
-        fields: 'id, webViewLink'
+        fields: 'id, webViewLink',
+        supportsAllDrives: true
       });
 
       driveFileId = response.data.id;
@@ -161,6 +219,7 @@ MEDFLOW CLINICAL PATIENT INTAKE REPORT
 Patient Name    : ${name}
 Age             : ${age} Years
 Gender          : ${gender}
+Category        : ${recordType || 'N/A'}
 Intake Date     : ${date}
 Workstation IP  : ${ipNo}
 --------------------------------------------------
@@ -188,7 +247,8 @@ Security Status : End-to-End HIPAA Encrypted Sync
           mimeType: 'text/plain',
           body: bufferStream
         },
-        fields: 'id, webViewLink'
+        fields: 'id, webViewLink',
+        supportsAllDrives: true
       });
 
       driveReportFileId = response.data.id;
@@ -202,7 +262,10 @@ Security Status : End-to-End HIPAA Encrypted Sync
       driveFileId,
       driveFileUrl,
       driveReportFileId,
-      driveReportFileUrl
+      driveReportFileUrl,
+      year,
+      month,
+      monthFolderId
     };
   } catch (error) {
     console.error('[GOOGLE DRIVE SERVICE] Sync Process Terminated:', error.message);
@@ -213,9 +276,12 @@ Security Status : End-to-End HIPAA Encrypted Sync
 /**
  * Generates an HTML report mirroring the UI table and uploads/updates it in Google Drive.
  * 
- * @param {Array} patients Array of all patient records
+ * @param {Array} patients Array of patient records for the month
+ * @param {string} monthFolderId Google Drive folder ID for the month
+ * @param {string} month Month name string
+ * @param {string} year Year string
  */
-export const syncPatientRegistryToDrive = async (patients) => {
+export const syncPatientRegistryToDrive = async (patients, monthFolderId, month, year) => {
   const parentFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
   const { clientEmail, privateKey } = getGoogleCredentials();
 
@@ -252,6 +318,11 @@ export const syncPatientRegistryToDrive = async (patients) => {
           </td>
           <td>${patient.age} yrs</td>
           <td>${patient.date}</td>
+          <td>
+            <span style="font-size: 0.8rem; font-weight: 600; color: #475569; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 6px;">
+              ${patient.recordType || 'N/A'}
+            </span>
+          </td>
           <td>
             <span class="gender-tag ${genderClass}">${patient.gender}</span>
           </td>
@@ -323,6 +394,7 @@ export const syncPatientRegistryToDrive = async (patients) => {
             <th>IP Address</th>
             <th>Age</th>
             <th>Intake Date</th>
+            <th>Category</th>
             <th>Gender</th>
             <th>Diagnostic File</th>
           </tr>
@@ -336,12 +408,14 @@ export const syncPatientRegistryToDrive = async (patients) => {
 </body>
 </html>`;
 
-    const fileName = 'MedFlow_Patient_Registry.html';
+    const fileName = `MedFlow_Registry_${month}_${year}.html`;
     
-    // Check if file exists in the parent folder
+    // Check if file exists in the month folder
     const searchRes = await drive.files.list({
-      q: `name='${fileName}' and '${parentFolderId}' in parents and trashed=false`,
-      fields: 'files(id)'
+      q: `name='${fileName}' and '${monthFolderId}' in parents and trashed=false`,
+      fields: 'files(id)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true
     });
 
     const bufferStream = new Readable();
@@ -352,18 +426,69 @@ export const syncPatientRegistryToDrive = async (patients) => {
       const fileId = searchRes.data.files[0].id;
       await drive.files.update({
         fileId: fileId,
-        media: { mimeType: 'text/html', body: bufferStream }
+        media: { mimeType: 'text/html', body: bufferStream },
+        supportsAllDrives: true
       });
-      console.log(`[GOOGLE DRIVE SERVICE] Updated master HTML registry file: ${fileId}`);
+      console.log(`[GOOGLE DRIVE SERVICE] Updated monthly HTML registry file: ${fileId}`);
     } else {
       const response = await drive.files.create({
-        requestBody: { name: fileName, parents: [parentFolderId], mimeType: 'text/html' },
+        requestBody: { name: fileName, parents: [monthFolderId], mimeType: 'text/html' },
         media: { mimeType: 'text/html', body: bufferStream },
-        fields: 'id'
+        fields: 'id',
+        supportsAllDrives: true
       });
-      console.log(`[GOOGLE DRIVE SERVICE] Created master HTML registry file: ${response.data.id}`);
+      console.log(`[GOOGLE DRIVE SERVICE] Created monthly HTML registry file: ${response.data.id}`);
     }
   } catch (error) {
     console.error('[GOOGLE DRIVE SERVICE] Error syncing registry HTML:', error.message);
+  }
+};
+
+/**
+ * Deletes specific files from Google Drive by ID.
+ */
+export const deletePatientFilesFromDrive = async (driveFileId, driveReportFileId) => {
+  const { clientEmail, privateKey } = getGoogleCredentials();
+  if (!clientEmail || !privateKey) return;
+  try {
+    const formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
+    const auth = new google.auth.GoogleAuth({
+      credentials: { client_email: clientEmail, private_key: formattedPrivateKey },
+      scopes: ['https://www.googleapis.com/auth/drive.file'],
+    });
+    const drive = google.drive({ version: 'v3', auth });
+    
+    if (driveFileId) {
+      await drive.files.delete({ fileId: driveFileId, supportsAllDrives: true }).catch(e => console.error('[GOOGLE DRIVE SERVICE] Failed to delete file:', e.message));
+    }
+    if (driveReportFileId) {
+      await drive.files.delete({ fileId: driveReportFileId, supportsAllDrives: true }).catch(e => console.error('[GOOGLE DRIVE SERVICE] Failed to delete report:', e.message));
+    }
+    console.log(`[GOOGLE DRIVE SERVICE] Deleted patient diagnostic and summary files from Google Drive.`);
+  } catch (error) {
+    console.error(`[GOOGLE DRIVE SERVICE] Error initiating file deletion from Drive:`, error.message);
+  }
+};
+
+/**
+ * Rebuilds the registry for a specific month based on a date string.
+ */
+export const rebuildPatientRegistryForDate = async (dateString, patients) => {
+  const parentFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  const { clientEmail, privateKey } = getGoogleCredentials();
+  if (!clientEmail || !privateKey || !parentFolderId) return;
+
+  try {
+    const formattedPrivateKey = privateKey.replace(/\\n/g, '\n');
+    const auth = new google.auth.GoogleAuth({
+      credentials: { client_email: clientEmail, private_key: formattedPrivateKey },
+      scopes: ['https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.metadata.readonly'],
+    });
+    const drive = google.drive({ version: 'v3', auth });
+
+    const { year, month, monthFolderId } = await getOrCreateTimeFolders(drive, parentFolderId, dateString);
+    await syncPatientRegistryToDrive(patients, monthFolderId, month, year);
+  } catch (error) {
+    console.error(`[GOOGLE DRIVE SERVICE] Error rebuilding registry for date ${dateString}:`, error.message);
   }
 };
